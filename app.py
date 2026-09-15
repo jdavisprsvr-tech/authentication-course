@@ -9,9 +9,15 @@ import sqlite3
 
 from flask import Flask, g, jsonify, request
 
+from werkzeug.security import generate_password_hash, check_password_hash
+
 DATABASE = "recipes.db"
 
 app = Flask(__name__)
+
+def hash_password(password: str) -> str:
+    # use pbkdf2:sha256 explicitly to avoid scrypt issues
+    return generate_password_hash(password, method="pbkdf2:sha256")
 
 
 def get_db():
@@ -127,6 +133,65 @@ def delete_recipe(recipe_id):
         return jsonify({"error": "recipe not found"}), 404
     return "", 204
 
+@app.post("/register")
+def register_user():
+    data = request.get_json(silent=True) or {}
+
+    username = data.get("username", "").strip()
+    email = data.get("email", "").strip()
+    password = data.get("password", "")
+
+    if not username or not email or not password:
+        return {"error": "username, email, and password are required"}, 400
+
+    password_hash = hash_password(password)
+
+    db = get_db()
+    try:
+        cur = db.execute(
+            "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
+            (username, email, password_hash),
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        # username or email already exists
+        return jsonify({"error": "username or email already in use"}), 409
+
+    row = db.execute(
+        "SELECT id, username, email FROM users WHERE id = ?",
+        (cur.lastrowid,),
+    ).fetchone()
+
+    return jsonify(
+        {
+            "id": row["id"],
+            "username": row["username"],
+            "email": row["email"],
+        }
+    ), 201
+
+@app.post("/login")
+def login():
+    data = request.get_json() or {}
+    username = data.get("username")
+    password = data.get("password")
+
+    db = get_db()
+
+    user = db.execute(
+        "SELECT * FROM users WHERE username = ?",
+        (username,)
+    ).fetchone()
+
+    if not user or not check_password_hash(user["password_hash"], password):
+        return {"error": "Invalid username or password"}, 401
+
+    return jsonify({
+        "id": user["id"],
+        "username": user["username"],
+    }), 200
+
 
 if __name__ == "__main__":
     app.run(debug=True)
+
