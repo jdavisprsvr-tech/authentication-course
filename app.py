@@ -178,6 +178,9 @@ def login():
 
     db = get_db()
 
+    if not username or not password:
+        return {"error": "username and password required"}, 400
+
     user = db.execute(
         "SELECT * FROM users WHERE username = ?",
         (username,)
