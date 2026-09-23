@@ -4,16 +4,29 @@ A working Flask + SQLite CRUD API for recipes. It stores data perfectly —
 and it trusts everyone. There is no authentication and no authorization yet.
 That is the point: you will add both, lesson by lesson, in Units 2 and 3.
 """
-
+import os
 import sqlite3
-
 from flask import Flask, g, jsonify, request
-
 from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
+import jwt
+from datetime import datetime, timedelta, timezone
+
+load_dotenv()
+
+app = Flask(__name__)
+app.config["JWT_SECRET"] = os.environ.get("JWT_SECRET")
 
 DATABASE = "recipes.db"
 
 app = Flask(__name__)
+
+app.config["JWT_SECRET"] = os.environ.get("JWT_SECRET")
+
+DATABASE = "recipes.db"
+
+
+
 
 def hash_password(password: str) -> str:
     # use pbkdf2:sha256 explicitly to avoid scrypt issues
@@ -68,10 +81,37 @@ def get_recipe(recipe_id):
 
 @app.post("/recipes")
 def create_recipe():
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return jsonify({"error": "token is required"}), 401
+
+    parts = auth_header.split(" ")
+
+    if len(parts) != 2 or parts[0] != "Bearer":
+        return jsonify({"error": "invalid authorization header"}),401
+
+    token = parts[1]
+
+    print("JWT_SECRET from config:", repr(app.config.get("JWT_SECRET")))
+
+    try:
+        payload = jwt.decode(
+            token,
+            app.config["JWT_SECRET"],
+            algorithms=["HS256"]
+        )
+
+        user_id = payload.get("sub")
+
+    except jwt.PyJWTError as e:
+        print("JWT ERROR:", repr(e))
+        return jsonify({"error": "invalid token"}), 401
+    
     data = request.get_json(silent=True)
     if not data or not data.get("title") or not data.get("ingredients"):
-        return jsonify({"error": "title and ingredients are required"}), 400
+            return jsonify({"error": "title and ingredients are required"}), 400
     db = get_db()
+
     try:
         cur = db.execute(
             "INSERT INTO recipes (title, ingredients, instructions, is_public)"
@@ -126,6 +166,26 @@ def update_recipe(recipe_id):
 
 @app.delete("/recipes/<int:recipe_id>")
 def delete_recipe(recipe_id):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return jsonify({"error": "token is required"}), 401
+
+    parts = auth_header.split(" ")
+    if len(parts) != 2 or parts[0] != "Bearer":
+        return jsonify({"error": "invalid authorization header"}), 401
+
+    token = parts[1]
+
+    try:
+        payload = jwt.decode(
+            token,
+            app.config["JWT_SECRET"],
+            algorithms=["HS256"]
+        )
+        user_id = payload.get("sub")
+    except jwt.PyJWTError:
+        return jsonify({"error": "invalid token"}), 401
+    
     db = get_db()
     cur = db.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
     db.commit()
@@ -189,12 +249,31 @@ def login():
     if not user or not check_password_hash(user["password_hash"], password):
         return {"error": "Invalid username or password"}, 401
 
+
+    print("JWT_SECRET from config:", 
+repr(app.config.get("JWT_SECRET")))
+
+    # At this point, credentials are valid: issue a JWT
+    payload = {
+        "sub": str(user["id"]),
+        "username": user["username"],
+        "exp": datetime.now(timezone.utc) + timedelta(hours=1),
+    }
+
+
+    token = jwt.encode(
+        payload,
+        app.config["JWT_SECRET"],
+        algorithm="HS256",
+    )
+
     return jsonify({
         "id": user["id"],
         "username": user["username"],
+        "token": token,
     }), 200
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5001)
 
