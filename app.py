@@ -6,11 +6,12 @@ That is the point: you will add both, lesson by lesson, in Units 2 and 3.
 """
 import os
 import sqlite3
+import jwt
 from flask import Flask, g, jsonify, request
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
-import jwt
 from datetime import datetime, timedelta, timezone
+from jwt import ExpiredSignatureError, PyJWTError
 
 load_dotenv()
 
@@ -102,6 +103,8 @@ def create_recipe():
         )
 
         user_id = payload.get("sub")
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "token has expired, please log in again"}), 401
 
     except jwt.PyJWTError as e:
         print("JWT ERROR:", repr(e))
@@ -134,6 +137,28 @@ def create_recipe():
 
 @app.patch("/recipes/<int:recipe_id>")
 def update_recipe(recipe_id):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return jsonify({"error": "token is required"}), 401
+
+    parts = auth_header.split(" ")
+    if len(parts) != 2 or parts[0] != "Bearer":
+        return jsonify({"error": "invalid authorization"}), 401
+
+    token = parts[1]
+
+    try:
+        payload = jwt.decode(
+            token,
+            app.config["JWT_SECRET"],
+            algorithms=["HS256"]
+        )
+        user_id = payload.get("sub")
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "token has expired, please log in again"}), 401
+    except jwt.PyJWTError:
+        return jsonify({"error": "invalid token"}), 401
+            
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"error": "a JSON body is required"}), 400
@@ -183,7 +208,9 @@ def delete_recipe(recipe_id):
             algorithms=["HS256"]
         )
         user_id = payload.get("sub")
-    except jwt.PyJWTError:
+    except ExpiredSignatureError:
+        return jsonify({"error": "token has expired, please log in again"}), 401
+    except PyJWTError:
         return jsonify({"error": "invalid token"}), 401
     
     db = get_db()
@@ -257,7 +284,7 @@ repr(app.config.get("JWT_SECRET")))
     payload = {
         "sub": str(user["id"]),
         "username": user["username"],
-        "exp": datetime.now(timezone.utc) + timedelta(hours=1),
+        "exp": datetime.now(timezone.utc) + timedelta(seconds=50),
     }
 
 
