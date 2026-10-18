@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 from flask import Flask, g, jsonify
 
-from app.db import get_db
+from app.db import init_db
 from app.routes.auth import auth_bp
 from app.routes.recipes import recipes_bp
 
@@ -60,6 +60,9 @@ def create_app(config_name="development"):
 
     print("DEBUG from config:", app.config.get("DEBUG"))
     print("USING DB:", app.config.get("DATABASE"))
+
+    with app.app_context():
+        init_db(app)
 
     # Register blueprints without changing existing URLs.
     app.register_blueprint(auth_bp, url_prefix="")

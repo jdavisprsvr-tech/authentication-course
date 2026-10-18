@@ -6,6 +6,9 @@ from flask import Blueprint, g, jsonify, request
 from app.auth import token_required
 from app.db import get_db
 from app.recipe_utils import recipe_to_dict
+from app.services.recipe_service import get_all_recipes
+from app.services.recipe_service import get_recipe_by_id
+from app.services.recipe_service import (get_all_recipes, get_recipe_by_id, create_recipe_for_user,)
 
 
 recipes_bp = Blueprint("recipes", __name__)
@@ -13,26 +16,19 @@ recipes_bp = Blueprint("recipes", __name__)
 
 @recipes_bp.get("/recipes")
 def list_recipes():
-    rows = get_db().execute(
-        "SELECT * FROM recipes ORDER BY id"
-    ).fetchall()
-
-    return jsonify([
-        recipe_to_dict(row) for row in rows
-    ])
+    recipes = get_all_recipes()
+    return jsonify(recipes)
 
 
 @recipes_bp.get("/recipes/<int:recipe_id>")
 def get_recipe(recipe_id):
-    row = get_db().execute(
-        "SELECT * FROM recipes WHERE id = ?",
-        (recipe_id,),
-    ).fetchone()
+    recipe = get_recipe_by_id(recipe_id)
 
-    if row is None:
+    if recipe is None:
         return jsonify({"error": "recipe not found"}), 404
 
-    return jsonify(recipe_to_dict(row))
+    return jsonify(recipe)
+
 
 
 @recipes_bp.post("/recipes")
@@ -41,46 +37,16 @@ def create_recipe():
     user_id = g.current_user["id"]
     data = request.get_json(silent=True)
 
-    if not isinstance(data, dict) or not data:
-        return jsonify({"error": "a JSON body is required"}), 400
+    status, payload = create_recipe_for_user(user_id, data)
 
-    required = ("title", "ingredients", "instructions")
+    if status == "bad_request":
+        return jsonify(payload), 400
+    if status == "conflict":
+        return jsonify(payload), 409
 
-    for field in required:
-        if field not in data:
-            return jsonify({"error": f"{field} is required"}), 400
+    # status == "ok"
+    return jsonify(payload), 201
 
-    is_public = 1 if data.get("is_public", False) else 0
-    db = get_db()
-
-    try:
-        cur = db.execute(
-            """
-            INSERT INTO recipes
-            (title, ingredients, instructions, is_public, author_id)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                data["title"],
-                data["ingredients"],
-                data["instructions"],
-                is_public,
-                user_id,
-            ),
-        )
-        db.commit()
-
-    except sqlite3.IntegrityError:
-        return jsonify({
-            "error": "a recipe with that title already exists"
-        }), 409
-
-    row = db.execute(
-        "SELECT * FROM recipes WHERE id = ?",
-        (cur.lastrowid,),
-    ).fetchone()
-
-    return jsonify(recipe_to_dict(row)), 201
 
 
 @recipes_bp.patch("/recipes/<int:recipe_id>")
