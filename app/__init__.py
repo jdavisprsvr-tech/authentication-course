@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 from flask import Flask, g, jsonify
 
-from app.db import init_db
+from app.db import init_db, close_db
 from app.routes.auth import auth_bp
 from app.routes.recipes import recipes_bp
 
@@ -17,6 +17,10 @@ load_dotenv()
 class Config:
     DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
     DATABASE = os.environ.get("RECIPES_DB_PATH")
+
+class TestingConfig(Config):
+    TESTING = True
+    DATABASE = "recipes_test.db"
 
 
 class DevelopmentConfig(Config):
@@ -33,6 +37,7 @@ def create_app(config_name="development"):
     config_map = {
         "development": DevelopmentConfig,
         "production": ProductionConfig,
+        "testing": TestingConfig,
     }
 
     if config_name not in config_map:
@@ -55,9 +60,8 @@ def create_app(config_name="development"):
 
     if not app.config.get("DATABASE"):
         raise RuntimeError(
-            "RECIPES_DB_PATH environment variable is required but missing"
-        )
-
+        "DATABASE must be configured for this environment"
+    )
     print("DEBUG from config:", app.config.get("DEBUG"))
     print("USING DB:", app.config.get("DATABASE"))
 
@@ -68,20 +72,12 @@ def create_app(config_name="development"):
     app.register_blueprint(auth_bp, url_prefix="")
     app.register_blueprint(recipes_bp, url_prefix="")
 
-    # Close the database connection after each application context.
+
     @app.teardown_appcontext
-    def close_db(exception=None):
-        db = g.pop("db", None)
+    def teardown_db(exception=None):
+        close_db(exception)
 
-        if db is not None:
-            db.close()
+   
 
-    # Public route
-    @app.get("/")
-    def hello():
-        return jsonify({
-            "message": "Recipe Box API",
-            "recipes": "/recipes",
-        })
-
+  
     return app

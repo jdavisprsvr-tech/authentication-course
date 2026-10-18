@@ -13,6 +13,15 @@ from app.services.recipe_service import (get_all_recipes, get_recipe_by_id, crea
 
 recipes_bp = Blueprint("recipes", __name__)
 
+  # Public route
+@recipes_bp.get("/")
+def hello():
+    return jsonify({
+    "message": "Recipe Box API",
+    "recipes": "/recipes",
+})
+
+
 
 @recipes_bp.get("/recipes")
 def list_recipes():
