@@ -112,3 +112,17 @@ The following scenarios must preserve their existing HTTP methods, authenticatio
 Your counts are currently:
 - Responsibility inventory: 9
 - Acceptance-list items: 7
+
+
+
+
+App now uses a Flask application factory with config classes and blueprints.
+Entry point no longer owns routes; / and recipe routes live under blueprints, and DB teardown is handled in the DB module and only wired in the factory.
+Auth logic is extracted into a service layer; auth routes handle HTTP only and delegate business logic and DB access.
+Verified the public API contract by re-running key endpoints:
+GET / → 200, same JSON as before
+POST /register → 201, JSON with id, email, username
+POST /login wrong password → 401, {"error":"Invalid username or password"}
+POST /login correct password → 200, JSON with id, username, token
+GET /recipes with Bearer token → 200, JSON list of recipes
+Behavior matches the original API; only internal structure changed.

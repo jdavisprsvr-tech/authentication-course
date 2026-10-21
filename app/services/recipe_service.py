@@ -1,28 +1,24 @@
 import sqlite3
 from app.db import get_db
 from app.recipe_utils import recipe_to_dict
+from app.models import Recipe
+
+
 
 
 
 def get_all_recipes():
-    db = get_db()
-    rows = db.execute(
-        "SELECT * FROM recipes ORDER BY id"
-    ).fetchall()
+    recipes = Recipe.query.order_by(Recipe.id).all()
+    return [recipe_to_dict(recipe) for recipe in recipes]
 
-    return [recipe_to_dict(row) for row in rows]
 
 def get_recipe_by_id(recipe_id):
-    db = get_db()
-    row = db.execute(
-        "SELECT * FROM recipes WHERE id = ?",
-        (recipe_id,)
-    ).fetchone()
+    recipe = Recipe.query.get(recipe_id)
 
-    if row is None:
+    if recipe is None:
         return None
 
-    return recipe_to_dict(row)
+    return recipe_to_dict(recipe)
 
 
 

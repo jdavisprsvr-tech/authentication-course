@@ -9,6 +9,7 @@ from flask import Flask, g, jsonify
 from app.db import init_db, close_db
 from app.routes.auth import auth_bp
 from app.routes.recipes import recipes_bp
+from .extensions import db 
 
 
 load_dotenv()
@@ -16,15 +17,20 @@ load_dotenv()
 
 class Config:
     DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
-    DATABASE = os.environ.get("RECIPES_DB_PATH")
+    DATABASE = os.path.abspath(
+    os.environ.get("RECIPES_DB_PATH") or "recipes.db"
+)
+    SQLALCHEMY_DATABASE_URI = "sqlite:///" + DATABASE
+
+class DevelopmentConfig(Config):
+    pass
 
 class TestingConfig(Config):
     TESTING = True
     DATABASE = "recipes_test.db"
+    SQLALCHEMY_DATABASE_URI = "sqlite:///recipes_test.db"
 
 
-class DevelopmentConfig(Config):
-    pass
 
 
 class ProductionConfig(Config):
@@ -33,6 +39,8 @@ class ProductionConfig(Config):
 
 def create_app(config_name="development"):
     app = Flask(__name__)
+    
+
 
     config_map = {
         "development": DevelopmentConfig,
@@ -47,6 +55,7 @@ def create_app(config_name="development"):
         )
 
     app.config.from_object(config_map[config_name])
+    db.init_app(app)
 
     # Required JWT secret
     jwt_secret = os.environ.get("JWT_SECRET")
