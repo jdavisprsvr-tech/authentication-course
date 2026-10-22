@@ -1,8 +1,7 @@
-import sqlite3
-from app.db import get_db
+from sqlalchemy.exc import IntegrityError
+from app.extensions import db
 from app.recipe_utils import recipe_to_dict
 from app.models import Recipe
-
 
 
 
@@ -22,6 +21,7 @@ def get_recipe_by_id(recipe_id):
 
 
 
+
 def create_recipe_for_user(user_id, data):
     if not isinstance(data, dict) or not data:
         return ("bad_request", {"error": "a JSON body is required"})
@@ -33,34 +33,24 @@ def create_recipe_for_user(user_id, data):
             return ("bad_request", {"error": f"{field} is required"})
 
     is_public = 1 if data.get("is_public", False) else 0
-    db = get_db()
+
+    recipe = Recipe(
+        title=data["title"],
+        ingredients=data["ingredients"],
+        instructions=data["instructions"],
+        is_public=is_public,
+        owner_id=user_id,
+    )
 
     try:
-        cur = db.execute(
-            """
-            INSERT INTO recipes
-            (title, ingredients, instructions, is_public, owner_id)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                data["title"],
-                data["ingredients"],
-                data["instructions"],
-                is_public,
-                user_id,
-            ),
-        )
-        db.commit()
+        db.session.add(recipe)
+        db.session.commit()
 
-    except sqlite3.IntegrityError:
+    except IntegrityError:
+        db.session.rollback()
         return (
             "conflict",
             {"error": "a recipe with that title already exists"},
         )
 
-    row = db.execute(
-        "SELECT * FROM recipes WHERE id = ?",
-        (cur.lastrowid,),
-    ).fetchone()
-
-    return ("ok", recipe_to_dict(row))
+    return ("ok", recipe_to_dict(recipe))

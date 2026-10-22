@@ -1,13 +1,12 @@
 
 """Authentication routes for the Recipe Box API — BE104."""
-
-import sqlite3
 from datetime import datetime, timedelta, timezone
 import jwt
 from flask import Blueprint, current_app, jsonify, request
+from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
-
-from app.db import get_db
+from app.extensions import db
+from app.models import User
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -40,32 +39,25 @@ def register_user():
     email = email.strip()
     password_hash = hash_password(password)
 
-    db = get_db()
+    user = User(
+        username=username,
+        email=email,
+        password_hash=password_hash,
+    )
 
     try:
-        cur = db.execute(
-            """
-            INSERT INTO users (username, email, password_hash)
-            VALUES (?, ?, ?)
-            """,
-            (username, email, password_hash),
-        )
-        db.commit()
-
-    except sqlite3.IntegrityError:
+        db.session.add(user)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
         return jsonify({
             "error": "username or email already in use"
         }), 409
 
-    row = db.execute(
-        "SELECT id, username, email FROM users WHERE id = ?",
-        (cur.lastrowid,),
-    ).fetchone()
-
     return jsonify({
-        "id": row["id"],
-        "username": row["username"],
-        "email": row["email"],
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
     }), 201
 
 
@@ -85,17 +77,12 @@ def login():
             "error": "username and password required"
         }), 400
 
-    db = get_db()
-
-    user = db.execute(
-        "SELECT * FROM users WHERE username = ?",
-        (username,),
-    ).fetchone()
+    user = User.query.filter_by(username=username).first()
 
     if (
-        not user
+        user is None
         or not isinstance(password, str)
-        or not check_password_hash(user["password_hash"], password)
+        or not check_password_hash(user.password_hash, password)
     ):
         return jsonify({
             "error": "Invalid username or password"
@@ -110,9 +97,9 @@ def login():
         }), 500
 
     payload = {
-        "sub": str(user["id"]),
-        "username": user["username"],
-        "role": user["role"],
+        "sub": str(user.id),
+        "username": user.username,
+        "role": user.role,
         "exp": datetime.now(timezone.utc) + timedelta(hours=2),
     }
 
@@ -123,7 +110,7 @@ def login():
     )
 
     return jsonify({
-        "id": user["id"],
-        "username": user["username"],
+        "id": user.id,
+        "username": user.username,
         "token": token,
     }), 200

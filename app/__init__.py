@@ -1,16 +1,14 @@
 
+
 """Recipe Box API — BE104."""
 
 import os
 
 from dotenv import load_dotenv
-from flask import Flask, g, jsonify
-
-from app.db import init_db, close_db
+from flask import Flask
 from app.routes.auth import auth_bp
 from app.routes.recipes import recipes_bp
-from .extensions import db 
-
+from app.extensions import db
 
 load_dotenv()
 
@@ -18,19 +16,19 @@ load_dotenv()
 class Config:
     DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
     DATABASE = os.path.abspath(
-    os.environ.get("RECIPES_DB_PATH") or "recipes.db"
-)
+        os.environ.get("RECIPES_DB_PATH") or "recipes.db"
+    )
     SQLALCHEMY_DATABASE_URI = "sqlite:///" + DATABASE
+
 
 class DevelopmentConfig(Config):
     pass
 
+
 class TestingConfig(Config):
     TESTING = True
-    DATABASE = "recipes_test.db"
-    SQLALCHEMY_DATABASE_URI = "sqlite:///recipes_test.db"
-
-
+    DATABASE = os.path.abspath("recipes_test.db")
+    SQLALCHEMY_DATABASE_URI = "sqlite:///" + DATABASE
 
 
 class ProductionConfig(Config):
@@ -39,8 +37,6 @@ class ProductionConfig(Config):
 
 def create_app(config_name="development"):
     app = Flask(__name__)
-    
-
 
     config_map = {
         "development": DevelopmentConfig,
@@ -57,7 +53,6 @@ def create_app(config_name="development"):
     app.config.from_object(config_map[config_name])
     db.init_app(app)
 
-    # Required JWT secret
     jwt_secret = os.environ.get("JWT_SECRET")
 
     if not jwt_secret:
@@ -67,26 +62,10 @@ def create_app(config_name="development"):
 
     app.config["JWT_SECRET"] = jwt_secret
 
-    if not app.config.get("DATABASE"):
-        raise RuntimeError(
-        "DATABASE must be configured for this environment"
-    )
     print("DEBUG from config:", app.config.get("DEBUG"))
     print("USING DB:", app.config.get("DATABASE"))
 
-    with app.app_context():
-        init_db(app)
-
-    # Register blueprints without changing existing URLs.
     app.register_blueprint(auth_bp, url_prefix="")
     app.register_blueprint(recipes_bp, url_prefix="")
 
-
-    @app.teardown_appcontext
-    def teardown_db(exception=None):
-        close_db(exception)
-
-   
-
-  
     return app

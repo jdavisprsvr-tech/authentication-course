@@ -1,10 +1,10 @@
 
-import sqlite3
-
+from sqlalchemy.exc import IntegrityError
 from flask import Blueprint, g, jsonify, request
+from app.extensions import db
+from app.models import Recipe
+from app.auth_decorators import token_required
 
-from app.auth import token_required
-from app.db import get_db
 from app.recipe_utils import recipe_to_dict
 from app.services.recipe_service import get_all_recipes
 from app.services.recipe_service import get_recipe_by_id
@@ -58,6 +58,7 @@ def create_recipe():
 
 
 
+
 @recipes_bp.patch("/recipes/<int:recipe_id>")
 @token_required
 def update_recipe(recipe_id):
@@ -68,79 +69,54 @@ def update_recipe(recipe_id):
     if not isinstance(data, dict) or not data:
         return jsonify({"error": "a JSON body is required"}), 400
 
-    fields = []
-    values = []
-
-    for column in ("title", "ingredients", "instructions"):
-        if column in data:
-            fields.append(f"{column} = ?")
-            values.append(data[column])
+    fields = ("title", "ingredients", "instructions")
+    has_field = any(field in data for field in fields)
 
     if "is_public" in data:
-        fields.append("is_public = ?")
-        values.append(1 if data["is_public"] else 0)
+        has_field = True
 
-    if not fields:
+    if not has_field:
         return jsonify({"error": "nothing to update"}), 400
 
-    db = get_db()
+    recipe = Recipe.query.get(recipe_id)
 
-    row = db.execute(
-        "SELECT author_id FROM recipes WHERE id = ?",
-        (recipe_id,),
-    ).fetchone()
-
-    if row is None:
+    if recipe is None:
         return jsonify({"error": "recipe not found"}), 404
 
-    if row["author_id"] != user_id and role != "admin":
+    if recipe.owner_id != user_id and role != "admin":
         return jsonify({"error": "forbidden"}), 403
 
-    values.append(recipe_id)
+    for field in fields:
+        if field in data:
+            setattr(recipe, field, data[field])
+
+    if "is_public" in data:
+        recipe.is_public = 1 if data["is_public"] else 0
 
     try:
-        db.execute(
-            f"UPDATE recipes SET {', '.join(fields)} WHERE id = ?",
-            values,
-        )
-        db.commit()
-
-    except sqlite3.IntegrityError:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
         return jsonify({
             "error": "a recipe with that title already exists"
         }), 409
 
-    row = db.execute(
-        "SELECT * FROM recipes WHERE id = ?",
-        (recipe_id,),
-    ).fetchone()
-
-    return jsonify(recipe_to_dict(row)), 200
+    return jsonify(recipe_to_dict(recipe)), 200
 
 
 @recipes_bp.delete("/recipes/<int:recipe_id>")
 @token_required
 def delete_recipe(recipe_id):
-    db = get_db()
-
-    row = db.execute(
-        "SELECT author_id FROM recipes WHERE id = ?",
-        (recipe_id,),
-    ).fetchone()
-
-    if row is None:
+    recipe = Recipe.query.get(recipe_id)
+    if recipe is None:
         return jsonify({"error": "recipe not found"}), 404
 
-    user_id = g.current_user["id"]
+    user_id = int(g.current_user["id"])
     role = g.current_user["role"]
 
-    if row["author_id"] != user_id and role != "admin":
+    if recipe.owner.id != user_id and role != "admin":
         return jsonify({"error": "forbidden"}), 403
 
-    db.execute(
-        "DELETE FROM recipes WHERE id = ?",
-        (recipe_id,),
-    )
-    db.commit()
-
+    db.session.delete(recipe)
+    db.session.commit()
     return "", 204

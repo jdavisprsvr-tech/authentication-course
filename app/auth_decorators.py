@@ -1,11 +1,12 @@
 
+
 from functools import wraps
 
 import jwt
 from jwt import ExpiredSignatureError, PyJWTError
 from flask import current_app, g, jsonify, request
 
-from app.db import get_db
+from app.models import User
 
 
 def token_required(view_function):
@@ -48,18 +49,19 @@ def token_required(view_function):
         except (PyJWTError, KeyError, TypeError, ValueError):
             return jsonify({"error": "invalid token"}), 401
 
-        user = get_db().execute(
-            "SELECT id, username, role FROM users WHERE id = ?",
-            (user_id,),
-        ).fetchone()
+        user = User.query.with_entities(
+            User.id,
+            User.username,
+            User.role,
+        ).filter_by(id=user_id).first()
 
         if user is None:
             return jsonify({"error": "invalid token"}), 401
 
         g.current_user = {
-            "id": user["id"],
-            "username": user["username"],
-            "role": user["role"],
+            "id": user.id,
+            "username": user.username,
+            "role": user.role,
         }
 
         return view_function(*args, **kwargs)
