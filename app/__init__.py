@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from flask import Flask
 from app.routes.auth import auth_bp
 from app.routes.recipes import recipes_bp
-from app.extensions import db
+from app.extensions import db, migrate
 
 load_dotenv()
 
@@ -52,6 +52,7 @@ def create_app(config_name="development"):
 
     app.config.from_object(config_map[config_name])
     db.init_app(app)
+    migrate.init_app(app, db)
 
     jwt_secret = os.environ.get("JWT_SECRET")
 
