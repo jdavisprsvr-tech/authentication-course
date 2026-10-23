@@ -10,6 +10,7 @@ class User(db.Model):
     password_hash = db.Column(db.String, nullable=False)
     role = db.Column(db.String, nullable=False, default="user")
     recipes = db.relationship("Recipe", back_populates="owner")
+    share_recipe = db.Column(db.String, nullable=True)
 
 
 class Recipe(db.Model):
