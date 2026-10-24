@@ -1,7 +1,7 @@
 
 from sqlalchemy.exc import IntegrityError
 from flask import Blueprint, g, jsonify, request
-from app.extensions import db
+from app.extensions import db, cache
 from app.models import Recipe
 from app.auth_decorators import token_required
 
@@ -24,6 +24,7 @@ def hello():
 
 
 @recipes_bp.get("/recipes")
+@cache.cached(timeout=60)
 def list_recipes():
     recipes = get_all_recipes()
     return jsonify(recipes)

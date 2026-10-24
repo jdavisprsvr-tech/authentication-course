@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from flask import Flask
 from app.routes.auth import auth_bp
 from app.routes.recipes import recipes_bp
-from app.extensions import db, migrate
+from app.extensions import db, migrate, cache
 
 load_dotenv()
 
@@ -19,6 +19,9 @@ class Config:
         os.environ.get("RECIPES_DB_PATH") or "recipes.db"
     )
     SQLALCHEMY_DATABASE_URI = "sqlite:///" + DATABASE
+
+    CACHE_TYPE = "SimpleCache"
+    CACHE_DEFAULT_TIMEOUT = 60
 
 
 class DevelopmentConfig(Config):
@@ -52,6 +55,7 @@ def create_app(config_name="development"):
 
     app.config.from_object(config_map[config_name])
     db.init_app(app)
+    cache.init_app(app)
     migrate.init_app(app, db)
 
     jwt_secret = os.environ.get("JWT_SECRET")
