@@ -5,7 +5,7 @@ import jwt
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models import User
 
 auth_bp = Blueprint("auth", __name__)
@@ -17,6 +17,7 @@ def hash_password(password: str) -> str:
 
 # User registration
 @auth_bp.post("/register")
+@limiter.limit("5 per hour")
 def register_user():
     data = request.get_json(silent=True)
 
@@ -63,6 +64,7 @@ def register_user():
 
 # User login
 @auth_bp.post("/login")
+@limiter.limit("10 per minute")
 def login():
     data = request.get_json(silent=True)
 

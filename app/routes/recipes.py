@@ -24,7 +24,7 @@ def hello():
 
 
 @recipes_bp.get("/recipes")
-@cache.cached(timeout=60)
+@cache.cached(timeout=60, key_prefix=lambda: "recipes_list")
 def list_recipes():
     recipes = get_all_recipes()
     return jsonify(recipes)
@@ -53,6 +53,9 @@ def create_recipe():
         return jsonify(payload), 400
     if status == "conflict":
         return jsonify(payload), 409
+    
+    # target cached response for list_recipes not entire cache    
+    cache.delete_cached(list_recipes)
 
     # status == "ok"
     return jsonify(payload), 201
