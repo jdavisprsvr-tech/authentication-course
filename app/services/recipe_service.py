@@ -1,7 +1,7 @@
 from sqlalchemy.exc import IntegrityError
 from app.extensions import db
 from app.recipe_utils import recipe_to_dict
-from app.models import Recipe
+from app.models import Recipe, Tag
 
 
 
@@ -54,3 +54,44 @@ def create_recipe_for_user(user_id, data):
         )
 
     return ("ok", recipe_to_dict(recipe))
+
+
+def add_tags_to_recipe(recipe_id, data):
+    if not isinstance(data, dict) or not isinstance(data.get("tags"), list):
+        return ("bad_request", {"error": "tags must be a list"})
+
+    recipe = Recipe.query.get(recipe_id)
+
+    if recipe is None:
+        return ("not_found", {"error": "recipe not found"})
+
+    tag_names = data["tags"]
+
+    if not all(isinstance(name, str) and name.strip() for name in tag_names):
+        return ("bad_request", {"error": "each tag must be a non-empty string"})
+
+    try:
+        for name in tag_names:
+            name = name.strip().lower()
+            tag = Tag.query.filter_by(name=name).first()
+
+            if tag is None:
+                tag = Tag(name=name)
+                db.session.add(tag)
+                db.session.flush()
+
+            if tag not in recipe.tags:
+                recipe.tags.append(tag)
+
+        db.session.commit()
+
+    except IntegrityError:
+        db.session.rollback()
+        return ("conflict", {"error": "could not save tags"})
+
+    return ("ok", {
+        "recipe_id": recipe.id,
+        "tags": sorted(tag.name for tag in recipe.tags),
+    })
+
+
